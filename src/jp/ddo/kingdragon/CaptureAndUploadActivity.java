@@ -23,7 +23,8 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.charset.Charset;
-
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
@@ -66,7 +67,8 @@ public class CaptureAndUploadActivity extends Activity {
         catch(Exception e) {
             e.printStackTrace();
         }
-        destination = new File(Environment.getExternalStorageDirectory(), "CaptureAndUpload/Temps/CaptureAndUpload_" + System.currentTimeMillis() + ".jpg");
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMddkkmmss");
+        destination = new File(Environment.getExternalStorageDirectory(), "CaptureAndUpload/Temps/CaptureAndUpload_" + dateFormat.format(new Date()) + ".jpg");
 
         captureButton = (Button)findViewById(R.id.capture);
         captureButton.setOnClickListener(new View.OnClickListener() {
