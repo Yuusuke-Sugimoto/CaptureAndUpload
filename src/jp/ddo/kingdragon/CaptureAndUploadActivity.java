@@ -66,7 +66,7 @@ public class CaptureAndUploadActivity extends Activity {
         catch(Exception e) {
             e.printStackTrace();
         }
-        destination = new File(Environment.getExternalStorageDirectory(), "CaptureAndUpload/Temps/image.jpg");
+        destination = new File(Environment.getExternalStorageDirectory(), "CaptureAndUpload/Temps/CaptureAndUpload_" + System.currentTimeMillis() + ".jpg");
 
         captureButton = (Button)findViewById(R.id.capture);
         captureButton.setOnClickListener(new View.OnClickListener() {
@@ -175,13 +175,6 @@ public class CaptureAndUploadActivity extends Activity {
                     client.getConnectionManager().shutdown();
                 }
             }
-            final String showMsg = retString;
-            mHandler.post(new Runnable() {
-                @Override
-                public void run() {
-                    Toast.makeText(getApplicationContext(), showMsg, Toast.LENGTH_SHORT).show();
-                }
-            });
 
             return(retString);
         }
