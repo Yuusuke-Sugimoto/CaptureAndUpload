@@ -2,5 +2,12 @@
 <resources>
     <string name="app_name">CaptureAndUpload</string>
 
-    <string name="label_capture">撮影</string>
+    <string name="main_label_capture">撮影</string>
+    <string name="main_uploading">アップロード中</string>
+    <string name="main_upload_success">アップロード成功</string>
+
+    <string name="error_make_directory_failed">保存用ディレクトリの作成に失敗しました</string>
+    <string name="error_launch_camera_failed">カメラの起動に失敗しました</string>
+    <string name="error_missing_parameters">パラメータがありません</string>
+    <string name="error_upload_failed">アップロード失敗</string>
 </resources>

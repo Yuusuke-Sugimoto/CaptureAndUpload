@@ -14,11 +14,15 @@ import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
+import android.view.Display;
 import android.view.MotionEvent;
+import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.View.OnTouchListener;
+import android.view.Window;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.Toast;
 
@@ -46,8 +50,6 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
     // 定数の宣言
     //リクエストコード
     public static final int REQUEST_IMAGE = 0;
-    // 通知
-    public static final int NOTE_UPLOAD = 0;
 
     // 変数の宣言
     // capturing - 撮影中かどうか
@@ -68,6 +70,23 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        /***
+         * タイトルバーを消す
+         * 参考:ウィンドウタイトルバーを非表示にするには - 逆引きAndroid入門
+         *      http://www.adakoda.com/android/000155.html
+         *
+         * ステータスバーを消す
+         * 参考:タイトルバーやステータスバーを非表示にする方法 - [Androidアプリ/Android] ぺんたん info
+         *      http://pentan.info/android/app/status_bar_hidden.html
+         *
+         * スリープを無効にする
+         * 参考:画面をスリープ状態にさせないためには - 逆引きAndroid入門
+         *      http://www.adakoda.com/android/000207.html
+         */
+        requestWindowFeature(Window.FEATURE_NO_TITLE);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
         setContentView(R.layout.main);
 
         /***
@@ -85,7 +104,7 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
         baseDir = new File(Environment.getExternalStorageDirectory(), "CaptureAndUpload");
         try {
             if(!baseDir.exists() && !baseDir.mkdirs()) {
-                Toast.makeText(getApplicationContext(), "保存用ディレクトリの作成に失敗しました。", Toast.LENGTH_SHORT).show();
+                Toast.makeText(getApplicationContext(), getResources().getString(R.string.error_make_directory_failed), Toast.LENGTH_SHORT).show();
                 finish();
             }
         }
@@ -149,28 +168,34 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
     public void onResume() {
         super.onResume();
 
-        try {
-            mCamera = Camera.open();
-            mCamera.startPreview();
+        if(mCamera == null) {
+            try {
+                mCamera = Camera.open();
+            }
+            catch(Exception e) {
+                Toast.makeText(getApplicationContext(), getResources().getString(R.string.error_launch_camera_failed), Toast.LENGTH_SHORT).show();
+                finish();
+            }
         }
-        catch(Exception e) {
-            Toast.makeText(getApplicationContext(), "カメラの起動に失敗しました。", Toast.LENGTH_SHORT).show();
-            finish();
-        }
+        surfaceCreated(preview.getHolder());
+        surfaceChanged(preview.getHolder(), 0, 0, 0);
+        mCamera.startPreview();
     }
 
     @Override
     public void onPause() {
         super.onPause();
 
-        mCamera.stopPreview();
-        mCamera.release();
+        if(mCamera != null) {
+            mCamera.stopPreview();
+            mCamera.release();
+        }
     }
 
     @Override
     public void onPictureTaken(byte[] data, Camera camera) {
         SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMddkkmmss");
-        String fileName = "CaptureAndUpload_" + dateFormat.format(new Date()) + ".jpg";
+        String fileName = "CAndU_" + dateFormat.format(new Date()) + ".jpg";
         File destFile = new File(baseDir, fileName);
 
         ContentValues values = new ContentValues();
@@ -184,8 +209,8 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
             fos.write(data);
             fos.flush();
             fos.close();
-            UploadTask upTask = new UploadTask();
-            upTask.execute(destFile);
+            UploadTask upTask = new UploadTask(destFile);
+            upTask.execute();
         }
         catch(FileNotFoundException e) {
             getContentResolver().delete(destUri, null, null);
@@ -197,9 +222,37 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
         }
 
         try {
-            // 画像の向きを書き込み
+            /***
+             * 画像の向きを書き込む
+             * 参考:AndroidでExif情報編集 – Android | team-hiroq
+             *      http://team-hiroq.com/blog/android/android_jpeg_exif.html
+             *
+             *      [AIR][Android] CameraUIで撮影した写真の回転が、機種によってバラバラなのをExifで補整する！  |    R o m a t i c A : Blog  : Archive
+             *      http://blog.romatica.com/2011/04/04/air-for-android-cameraui-exif/
+             *
+             * 画面の向きを検出する
+             * 参考:Androidアプリ開発メモ027：画面の向き: ぷ～ろぐ
+             *      http://into.cocolog-nifty.com/pulog/2011/10/android027-9b2b.html
+             */
             ExifInterface ei = new ExifInterface(destFile.getAbsolutePath());
-            ei.setAttribute(ExifInterface.TAG_ORIENTATION, "6");
+            WindowManager wm = (WindowManager)getSystemService(Context.WINDOW_SERVICE);
+            Display mDisplay = wm.getDefaultDisplay();
+            switch(mDisplay.getRotation()) {
+            case Surface.ROTATION_0:
+                ei.setAttribute(ExifInterface.TAG_ORIENTATION, "6");
+
+                break;
+            case Surface.ROTATION_90:
+                ei.setAttribute(ExifInterface.TAG_ORIENTATION, "1");
+
+                break;
+            case Surface.ROTATION_270:
+                ei.setAttribute(ExifInterface.TAG_ORIENTATION, "3");
+
+                break;
+            default:
+                break;
+            }
             ei.saveAttributes();
         }
         catch(IOException e) {
@@ -230,7 +283,6 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
 
         List<Camera.Size> pictureSizes = params.getSupportedPictureSizes();
         selected = pictureSizes.get(0);
-        Toast.makeText(getApplicationContext(), selected.width + ", " + selected.height, Toast.LENGTH_SHORT).show();
         for(int i = 1; i < pictureSizes.size(); i++) {
             Camera.Size temp = pictureSizes.get(i);
             if(selected.width * selected.height < temp.width * temp.height) {
@@ -241,7 +293,25 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
         params.setPictureSize(selected.width, selected.height);
 
         mCamera.setParameters(params);
-        mCamera.setDisplayOrientation(90);
+
+        WindowManager wm = (WindowManager)getSystemService(Context.WINDOW_SERVICE);
+        Display mDisplay = wm.getDefaultDisplay();
+        switch(mDisplay.getRotation()) {
+        case Surface.ROTATION_0:
+            mCamera.setDisplayOrientation(90);
+
+            break;
+        case Surface.ROTATION_90:
+            mCamera.setDisplayOrientation(0);
+
+            break;
+        case Surface.ROTATION_270:
+            mCamera.setDisplayOrientation(180);
+
+            break;
+        default:
+            break;
+        }
 
         mCamera.startPreview();
     }
@@ -264,7 +334,15 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
      * 参考:Asynctaskを使って非同期処理を行う | Tech Booster
      *      http://techbooster.org/android/application/1339/
      */
-    class UploadTask extends AsyncTask<File, Void, String> {
+    class UploadTask extends AsyncTask<Void, Void, String> {
+        // 変数の宣言
+        private int noteID;
+        private File mFile;
+
+        public UploadTask(File inputFile) {
+            mFile = inputFile;
+        }
+
         @Override
         public void onPreExecute() {
             super.onPreExecute();
@@ -273,17 +351,18 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
             Intent launchIntent = new Intent(getApplicationContext(), CaptureAndUploadActivity.class);
             PendingIntent contentIntent = PendingIntent.getActivity(getApplicationContext(), 0, launchIntent, Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
-            Notification note = new Notification(android.R.drawable.ic_menu_info_details, "ファイルをアップロード中…", System.currentTimeMillis());
-            note.setLatestEventInfo(getApplicationContext(), "ファイルをアップロード中…", "ファイルをアップロード中…", contentIntent);
+            String message = getResources().getString(R.string.main_uploading) + " - " + mFile.getName();
+            Notification note = new Notification(android.R.drawable.ic_menu_info_details, message, System.currentTimeMillis());
+            note.setLatestEventInfo(getApplicationContext(), message, message, contentIntent);
             note.flags |= Notification.FLAG_AUTO_CANCEL;
 
-            manager.notify(NOTE_UPLOAD, note);
+            noteID = (int)(Math.random() * 16777216);
+            manager.notify(noteID, note);
         }
 
         @Override
-        public String doInBackground(File... params) {
+        public String doInBackground(Void... params) {
             String retString = "";
-            File mFile = params[0];
 
             if(mFile != null) {
                 DefaultHttpClient client = new DefaultHttpClient();
@@ -298,7 +377,7 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
                     MultipartEntity entity = new MultipartEntity();
 
                     entity.addPart("contributor", new StringBody("ななしさん", "text/plain", Charset.forName("UTF-8")));
-                    entity.addPart("comment", new StringBody("Androidアプリからの投稿テスト", "text/plain", Charset.forName("UTF-8")));
+                    entity.addPart("comment", new StringBody("", "text/plain", Charset.forName("UTF-8")));
                     entity.addPart("passwd", new StringBody("testtest", "text/plain", Charset.forName("UTF-8")));
                     entity.addPart("passwd_conf", new StringBody("testtest", "text/plain", Charset.forName("UTF-8")));
                     entity.addPart("file", new FileBody(mFile));
@@ -315,10 +394,10 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
                                 retString = EntityUtils.toString(response.getEntity(), "UTF-8");
                                 break;
                             case HttpStatus.SC_NOT_FOUND:
-                                retString = "パラメータがありません。";
+                                retString = getResources().getString(R.string.error_missing_parameters);
                                 break;
                             default:
-                                retString = "ファイルのアップロードに失敗しました。";
+                                retString = getResources().getString(R.string.error_upload_failed) + " - " + mFile.getName();
                                 break;
                             }
 
@@ -345,11 +424,12 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
             Intent launchIntent = new Intent(getApplicationContext(), CaptureAndUploadActivity.class);
             PendingIntent contentIntent = PendingIntent.getActivity(getApplicationContext(), 0, launchIntent, Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
-            Notification note = new Notification(android.R.drawable.ic_menu_info_details, "ファイルのアップロードに成功しました。", System.currentTimeMillis());
-            note.setLatestEventInfo(getApplicationContext(), "ファイルのアップロードに成功しました。", "ファイルのアップロードに成功しました。", contentIntent);
+            String message = getResources().getString(R.string.main_upload_success) + " - " + mFile.getName();
+            Notification note = new Notification(android.R.drawable.ic_menu_info_details, message, System.currentTimeMillis());
+            note.setLatestEventInfo(getApplicationContext(), message, message, contentIntent);
             note.flags |= Notification.FLAG_AUTO_CANCEL;
 
-            manager.notify(NOTE_UPLOAD, note);
+            manager.notify(noteID, note);
         }
     }
 }
