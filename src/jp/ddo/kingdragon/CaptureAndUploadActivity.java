@@ -189,6 +189,7 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
         if(mCamera != null) {
             mCamera.stopPreview();
             mCamera.release();
+            mCamera = null;
         }
     }
 
@@ -267,7 +268,12 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
 
     @Override
     public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-        mCamera.stopPreview();
+        if(mCamera != null) {
+            mCamera.stopPreview();
+        }
+        else {
+            mCamera = Camera.open();
+        }
 
         Camera.Parameters params = mCamera.getParameters();
         List<Camera.Size> previewSizes = params.getSupportedPreviewSizes();
