@@ -2,5 +2,5 @@
 <resources>
     <string name="app_name">CaptureAndUpload</string>
 
-    <string name="label_capture">写真を撮影</string>
+    <string name="label_capture">撮影</string>
 </resources>
