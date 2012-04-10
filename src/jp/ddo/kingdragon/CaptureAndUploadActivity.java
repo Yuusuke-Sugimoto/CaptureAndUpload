@@ -1,11 +1,13 @@
 package jp.ddo.kingdragon;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.ContentValues;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.hardware.Camera;
 import android.media.ExifInterface;
@@ -13,6 +15,7 @@ import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
 import android.provider.MediaStore;
 import android.view.Display;
 import android.view.MotionEvent;
@@ -20,8 +23,8 @@ import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.View.OnTouchListener;
-import android.view.Window;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.Toast;
@@ -47,19 +50,23 @@ import org.apache.http.impl.client.DefaultHttpClient;
 import org.apache.http.util.EntityUtils;
 
 public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.Callback, Camera.PictureCallback {
-    // 定数の宣言
-    //リクエストコード
-    public static final int REQUEST_IMAGE = 0;
-
     // 変数の宣言
+    // mHandler - 他スレッドからのUIの更新に使用
+    private Handler mHandler;
+
     // capturing - 撮影中かどうか
     // true:撮影中 false:非撮影中
     private boolean capturing;
-    // focused - オートフォーカス済みかどうか
-    // true:オートフォーカス済み false:オートフォーカス前
-    private boolean focused;
+    // focusing - オートフォーカス中かどうか
+    // true:オートフォーカス中 false:非オートフォーカス中
+    private boolean focusing;
+    // uploading - アップロード中かどうか
+    // true:アップロード中 false:非アップロード中
+    private boolean uploading;
+
     // baseDir - 保存用ディレクトリ
     private File baseDir;
+
     // captureButton - 撮影ボタン
     private Button captureButton;
     // preview - プレビュー部分
@@ -72,20 +79,11 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
         super.onCreate(savedInstanceState);
 
         /***
-         * タイトルバーを消す
-         * 参考:ウィンドウタイトルバーを非表示にするには - 逆引きAndroid入門
-         *      http://www.adakoda.com/android/000155.html
-         *
-         * ステータスバーを消す
-         * 参考:タイトルバーやステータスバーを非表示にする方法 - [Androidアプリ/Android] ぺんたん info
-         *      http://pentan.info/android/app/status_bar_hidden.html
-         *
          * スリープを無効にする
          * 参考:画面をスリープ状態にさせないためには - 逆引きAndroid入門
          *      http://www.adakoda.com/android/000207.html
          */
-        requestWindowFeature(Window.FEATURE_NO_TITLE);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         setContentView(R.layout.main);
 
@@ -98,13 +96,14 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
         System.setProperty("https.keepAlive", "false");
 
         capturing = false;
-        focused = false;
+        focusing = false;
+        uploading = false;
 
         // 保存用ディレクトリの作成
         baseDir = new File(Environment.getExternalStorageDirectory(), "CaptureAndUpload");
         try {
             if(!baseDir.exists() && !baseDir.mkdirs()) {
-                Toast.makeText(getApplicationContext(), getResources().getString(R.string.error_make_directory_failed), Toast.LENGTH_SHORT).show();
+                Toast.makeText(getApplicationContext(), getString(R.string.error_make_directory_failed), Toast.LENGTH_SHORT).show();
                 finish();
             }
         }
@@ -117,34 +116,10 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
             @Override
             public void onClick(View v) {
                 if(!capturing) {
+                    // 撮影中でなければ撮影
                     capturing = true;
                     captureButton.setEnabled(false);
-                    if(focused) {
-                        // オートフォーカス済みであればそのまま撮影
-                        mCamera.takePicture(null, null, null, CaptureAndUploadActivity.this);
-                    }
-                    else {
-                        // オートフォーカス前であればオートフォーカス後に撮影
-                        mCamera.autoFocus(new Camera.AutoFocusCallback() {
-                            @Override
-                            public void onAutoFocus(boolean success, Camera camera) {
-                                mCamera.stopPreview();
-                                Thread mThread = new Thread(new Runnable() {
-                                    @Override
-                                    public void run() {
-                                        try {
-                                            Thread.sleep(300);
-                                        }
-                                        catch(Exception e) {
-                                            e.printStackTrace();
-                                        }
-                                        mCamera.takePicture(null, null, null, CaptureAndUploadActivity.this);
-                                    }
-                                });
-                                mThread.start();
-                            }
-                        });
-                    }
+                    mCamera.takePicture(null, null, null, CaptureAndUploadActivity.this);
                 }
             }
         });
@@ -156,8 +131,20 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
             @Override
             public boolean onTouch(View v, MotionEvent event) {
                 // 画面がタッチされたらオートフォーカスを実行
-                mCamera.autoFocus(null);
-                focused = true;
+                if(!focusing) {
+                    // オートフォーカス中でなければオートフォーカスを実行
+                    // フラグを更新
+                    focusing = true;
+
+                    captureButton.setEnabled(false);
+                    mCamera.autoFocus(new Camera.AutoFocusCallback() {
+                        @Override
+                        public void onAutoFocus(boolean success, Camera camera) {
+                            focusing = false;
+                            captureButton.setEnabled(true);
+                        }
+                    });
+                }
 
                 return(false);
             }
@@ -168,18 +155,7 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
     public void onResume() {
         super.onResume();
 
-        if(mCamera == null) {
-            try {
-                mCamera = Camera.open();
-            }
-            catch(Exception e) {
-                Toast.makeText(getApplicationContext(), getResources().getString(R.string.error_launch_camera_failed), Toast.LENGTH_SHORT).show();
-                finish();
-            }
-        }
-        surfaceCreated(preview.getHolder());
         surfaceChanged(preview.getHolder(), 0, 0, 0);
-        mCamera.startPreview();
     }
 
     @Override
@@ -193,12 +169,40 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
         }
     }
 
+    /***
+     * バックボタンが押された際に本当に終了するかどうかを尋ねる
+     */
+    @Override
+    public void onBackPressed() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(CaptureAndUploadActivity.this);
+        builder.setIcon(android.R.drawable.ic_dialog_alert);
+        builder.setTitle(getString(R.string.main_exit_title));
+        builder.setMessage(getString(R.string.main_exit_message));
+        builder.setPositiveButton(getString(R.string.yes), new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                // ポジティブボタンが押されたら終了する
+                finish();
+            }
+        });
+        builder.setNegativeButton(getString(R.string.no), null);
+        builder.setCancelable(true);
+        builder.create().show();
+    }
+
+    /***
+     * 写真撮影時のコールバックメソッド
+     */
     @Override
     public void onPictureTaken(byte[] data, Camera camera) {
+        Boolean isSaveSucceed = true;
+
+        // ファイル名を生成
         SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMddkkmmss");
-        String fileName = "CAndU_" + dateFormat.format(new Date()) + ".jpg";
+        String fileName = "tottepost_" + dateFormat.format(new Date()) + ".jpg";
         File destFile = new File(baseDir, fileName);
 
+        // 生成したファイル名で新規ファイルを登録
         ContentValues values = new ContentValues();
         values.put(MediaStore.Images.Media.TITLE, fileName);
         values.put("_data", destFile.getAbsolutePath());
@@ -210,14 +214,14 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
             fos.write(data);
             fos.flush();
             fos.close();
-            UploadTask upTask = new UploadTask(destFile);
-            upTask.execute();
         }
         catch(FileNotFoundException e) {
+            isSaveSucceed = false;
             getContentResolver().delete(destUri, null, null);
             e.printStackTrace();
         }
         catch(IOException e) {
+            isSaveSucceed = false;
             getContentResolver().delete(destUri, null, null);
             e.printStackTrace();
         }
@@ -235,103 +239,142 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
              * 参考:Androidアプリ開発メモ027：画面の向き: ぷ～ろぐ
              *      http://into.cocolog-nifty.com/pulog/2011/10/android027-9b2b.html
              */
-            ExifInterface ei = new ExifInterface(destFile.getAbsolutePath());
+            ExifInterface mExifInterface = new ExifInterface(destFile.getAbsolutePath());
             WindowManager wm = (WindowManager)getSystemService(Context.WINDOW_SERVICE);
             Display mDisplay = wm.getDefaultDisplay();
             switch(mDisplay.getRotation()) {
             case Surface.ROTATION_0:
-                ei.setAttribute(ExifInterface.TAG_ORIENTATION, "6");
+                mExifInterface.setAttribute(ExifInterface.TAG_ORIENTATION, "6");
 
                 break;
             case Surface.ROTATION_90:
-                ei.setAttribute(ExifInterface.TAG_ORIENTATION, "1");
+                mExifInterface.setAttribute(ExifInterface.TAG_ORIENTATION, "1");
 
                 break;
             case Surface.ROTATION_270:
-                ei.setAttribute(ExifInterface.TAG_ORIENTATION, "3");
+                mExifInterface.setAttribute(ExifInterface.TAG_ORIENTATION, "3");
 
                 break;
             default:
                 break;
             }
-            ei.saveAttributes();
+            mExifInterface.saveAttributes();
         }
         catch(IOException e) {
+            isSaveSucceed = false;
             e.printStackTrace();
         }
 
-        mCamera.startPreview();
+        if(isSaveSucceed) {
+            UploadTask upTask = new UploadTask(destFile);
+            upTask.execute();
+        }
+
         capturing = false;
-        focused = false;
+        mCamera.cancelAutoFocus();
+        mCamera.startPreview();
         captureButton.setEnabled(true);
     }
 
+    /***
+     * SurfaceViewのサイズなどが変更された際に呼び出される
+     */
     @Override
     public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-        if(mCamera != null) {
-            mCamera.stopPreview();
-        }
-        else {
-            mCamera = Camera.open();
-        }
-
-        Camera.Parameters params = mCamera.getParameters();
-        List<Camera.Size> previewSizes = params.getSupportedPreviewSizes();
-        Camera.Size selected = previewSizes.get(0);
-        for(int i = 1; i < previewSizes.size(); i++) {
-            Camera.Size temp = previewSizes.get(i);
-            if(selected.width * selected.height < temp.width * temp.height) {
-                // 一番大きなプレビューサイズを選択
-                selected = temp;
-            }
-        }
-        params.setPreviewSize(selected.width, selected.height);
-
-        List<Camera.Size> pictureSizes = params.getSupportedPictureSizes();
-        selected = pictureSizes.get(0);
-        for(int i = 1; i < pictureSizes.size(); i++) {
-            Camera.Size temp = pictureSizes.get(i);
-            if(selected.width * selected.height < temp.width * temp.height) {
-                // 一番大きな画像サイズを選択
-                selected = temp;
-            }
-        }
-        params.setPictureSize(selected.width, selected.height);
-
-        mCamera.setParameters(params);
-
-        WindowManager wm = (WindowManager)getSystemService(Context.WINDOW_SERVICE);
-        Display mDisplay = wm.getDefaultDisplay();
-        switch(mDisplay.getRotation()) {
-        case Surface.ROTATION_0:
-            mCamera.setDisplayOrientation(90);
-
-            break;
-        case Surface.ROTATION_90:
-            mCamera.setDisplayOrientation(0);
-
-            break;
-        case Surface.ROTATION_270:
-            mCamera.setDisplayOrientation(180);
-
-            break;
-        default:
-            break;
-        }
-
-        mCamera.startPreview();
-    }
-
-    @Override
-    public void surfaceCreated(SurfaceHolder holder) {
         try {
+            if(mCamera != null) {
+                mCamera.stopPreview();
+            }
+            else {
+                mCamera = Camera.open();
+            }
+
+            // 各種パラメータの設定
+            Camera.Parameters params = mCamera.getParameters();
+            // 保存する画像サイズを決定
+            List<Camera.Size> pictureSizes = params.getSupportedPictureSizes();
+            Camera.Size picSize = pictureSizes.get(0);
+            for(int i = 1; i < pictureSizes.size(); i++) {
+                Camera.Size temp = pictureSizes.get(i);
+                if(picSize.width * picSize.height > 2048 * 1232 || picSize.width * picSize.height < temp.width * temp.height) {
+                    // 2048x1232以下で一番大きな画像サイズを選択
+                    picSize = temp;
+                }
+            }
+            params.setPictureSize(picSize.width, picSize.height);
+
+            // 画像サイズを元にプレビューサイズを決定
+            List<Camera.Size> previewSizes = params.getSupportedPreviewSizes();
+            Camera.Size preSize = previewSizes.get(0);
+            for(int i = 1; i < previewSizes.size(); i++) {
+                Camera.Size temp = previewSizes.get(i);
+                if(preSize.width * preSize.height < temp.width * temp.height) {
+                    if(Math.abs((double)picSize.width / (double)picSize.height - (double)preSize.width / (double)preSize.height)
+                       >= Math.abs((double)picSize.width / (double)picSize.height - (double)temp.width / (double)temp.height)) {
+                        // 一番保存サイズの比に近くてかつ一番大きなプレビューサイズを選択
+                        preSize = temp;
+                    }
+                }
+            }
+            params.setPreviewSize(preSize.width, preSize.height);
+
+            // プレビューサイズを元にSurfaceViewのサイズを決定
+            // プレビューサイズとSurfaceViewのサイズで縦横の関係が逆になっている
+            WindowManager manager = (WindowManager)getSystemService(WINDOW_SERVICE);
+            Display mDisplay = manager.getDefaultDisplay();
+            ViewGroup.LayoutParams lParams = preview.getLayoutParams();
+            lParams.width  = mDisplay.getWidth();
+            lParams.height = mDisplay.getHeight();
+            if((double)preSize.width / (double)preSize.height
+               < (double)mDisplay.getHeight() / (double)mDisplay.getWidth()) {
+                // 横の長さに合わせる
+                lParams.height = preSize.width * mDisplay.getWidth() / preSize.height;
+            }
+            else if((double)preSize.width / (double)preSize.height
+                    > (double)mDisplay.getHeight() / (double)mDisplay.getWidth()) {
+                // 縦の長さに合わせる
+                lParams.width  = preSize.height * mDisplay.getHeight() / preSize.width;
+            }
+            preview.setLayoutParams(lParams);
+
+            mCamera.setParameters(params);
+
+            switch(mDisplay.getRotation()) {
+            case Surface.ROTATION_0:
+                mCamera.setDisplayOrientation(90);
+
+                break;
+            case Surface.ROTATION_90:
+                mCamera.setDisplayOrientation(0);
+
+                break;
+            case Surface.ROTATION_270:
+                mCamera.setDisplayOrientation(180);
+
+                break;
+            default:
+                break;
+            }
+
             mCamera.setPreviewDisplay(preview.getHolder());
+            mCamera.startPreview();
         }
         catch(Exception e) {
-            e.printStackTrace();
+            Toast.makeText(getApplicationContext(), getString(R.string.error_launch_camera_failed), Toast.LENGTH_SHORT).show();
+
+            finish();
         }
     }
 
+    /***
+     * SurfaceViewが生成された際に呼び出される
+     */
+    @Override
+    public void surfaceCreated(SurfaceHolder holder) {}
+
+    /***
+     * SurfaceViewが破棄される際に呼び出される
+     */
     @Override
     public void surfaceDestroyed(SurfaceHolder holder) {}
 
@@ -350,25 +393,32 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
         }
 
         @Override
-        public void onPreExecute() {
-            super.onPreExecute();
+        public String doInBackground(Void... params) {
+            String retString = "";
 
+            while(uploading) {
+                // 他のファイルをアップロード中であれば待機する
+                try {
+                    Thread.sleep(500);
+                }
+                catch(Exception e) {
+                    e.printStackTrace();
+                }
+            }
+            uploading = true;
+
+            // アップロード中であることを通知領域に表示する
             NotificationManager manager = (NotificationManager)getSystemService(Context.NOTIFICATION_SERVICE);
             Intent launchIntent = new Intent(getApplicationContext(), CaptureAndUploadActivity.class);
             PendingIntent contentIntent = PendingIntent.getActivity(getApplicationContext(), 0, launchIntent, Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
-            String message = getResources().getString(R.string.main_uploading) + " - " + mFile.getName();
+            String message = getString(R.string.main_uploading) + " - " + mFile.getName();
             Notification note = new Notification(android.R.drawable.ic_menu_info_details, message, System.currentTimeMillis());
             note.setLatestEventInfo(getApplicationContext(), message, message, contentIntent);
             note.flags |= Notification.FLAG_AUTO_CANCEL;
 
             noteID = (int)(Math.random() * 16777216);
             manager.notify(noteID, note);
-        }
-
-        @Override
-        public String doInBackground(Void... params) {
-            String retString = "";
 
             if(mFile != null) {
                 DefaultHttpClient client = new DefaultHttpClient();
@@ -400,10 +450,10 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
                                 retString = EntityUtils.toString(response.getEntity(), "UTF-8");
                                 break;
                             case HttpStatus.SC_NOT_FOUND:
-                                retString = getResources().getString(R.string.error_missing_parameters);
+                                retString = getString(R.string.error_missing_parameters);
                                 break;
                             default:
-                                retString = getResources().getString(R.string.error_upload_failed) + " - " + mFile.getName();
+                                retString = getString(R.string.error_upload_failed) + " - " + mFile.getName();
                                 break;
                             }
 
@@ -426,16 +476,18 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
         public void onPostExecute(String result) {
             super.onPostExecute(result);
 
+            // アップロードが完了したら通知を更新する
             NotificationManager manager = (NotificationManager)getSystemService(Context.NOTIFICATION_SERVICE);
             Intent launchIntent = new Intent(getApplicationContext(), CaptureAndUploadActivity.class);
             PendingIntent contentIntent = PendingIntent.getActivity(getApplicationContext(), 0, launchIntent, Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
-            String message = getResources().getString(R.string.main_upload_success) + " - " + mFile.getName();
+            String message = getString(R.string.main_upload_success) + " - " + mFile.getName();
             Notification note = new Notification(android.R.drawable.ic_menu_info_details, message, System.currentTimeMillis());
             note.setLatestEventInfo(getApplicationContext(), message, message, contentIntent);
             note.flags |= Notification.FLAG_AUTO_CANCEL;
 
             manager.notify(noteID, note);
+            uploading = false;
         }
     }
 }

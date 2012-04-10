@@ -3,8 +3,14 @@
     <string name="app_name">CaptureAndUpload</string>
 
     <string name="main_label_capture">撮影</string>
+    <string name="main_exit_title">アプリの終了</string>
+    <string name="main_exit_message">アプリを終了してもよろしいですか?</string>
     <string name="main_uploading">アップロード中</string>
     <string name="main_upload_success">アップロード成功</string>
+
+    <string name="yes">はい</string>
+    <string name="no">いいえ</string>
+    <string name="ok">OK</string>
 
     <string name="error_make_directory_failed">保存用ディレクトリの作成に失敗しました</string>
     <string name="error_launch_camera_failed">カメラの起動に失敗しました</string>
