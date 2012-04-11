@@ -5,19 +5,22 @@ import android.app.AlertDialog;
 import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.database.Cursor;
 import android.hardware.Camera;
-import android.media.ExifInterface;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
-import android.os.Handler;
+import android.preference.PreferenceManager;
 import android.provider.MediaStore;
 import android.view.Display;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.SurfaceHolder;
@@ -30,7 +33,6 @@ import android.widget.Button;
 import android.widget.Toast;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.charset.Charset;
@@ -50,10 +52,15 @@ import org.apache.http.impl.client.DefaultHttpClient;
 import org.apache.http.util.EntityUtils;
 
 public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.Callback, Camera.PictureCallback {
-    // 変数の宣言
-    // mHandler - 他スレッドからのUIの更新に使用
-    private Handler mHandler;
+    // 定数の宣言
+    // アップロード先
+    public static final String DESTINATION_ADDRESS = "http://kingdragon.ddo.jp/test1234/";
+    // リクエストコード
+    public static final int REQUEST_IMAGE_FROM_GALLERY = 0;
+    public static final int REQUEST_CALL_SETTING = 1;
+    public static final int REQUEST_INPUT_COMMENT = 2;
 
+    // 変数の宣言
     // capturing - 撮影中かどうか
     // true:撮影中 false:非撮影中
     private boolean capturing;
@@ -103,12 +110,16 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
         baseDir = new File(Environment.getExternalStorageDirectory(), "CaptureAndUpload");
         try {
             if(!baseDir.exists() && !baseDir.mkdirs()) {
-                Toast.makeText(getApplicationContext(), getString(R.string.error_make_directory_failed), Toast.LENGTH_SHORT).show();
+                Toast.makeText(CaptureAndUploadActivity.this, getString(R.string.error_make_directory_failed), Toast.LENGTH_SHORT).show();
+
                 finish();
             }
         }
         catch(Exception e) {
+            Toast.makeText(CaptureAndUploadActivity.this, getString(R.string.error_make_directory_failed), Toast.LENGTH_SHORT).show();
             e.printStackTrace();
+
+            finish();
         }
 
         captureButton = (Button)findViewById(R.id.capture);
@@ -149,6 +160,9 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
                 return(false);
             }
         });
+
+        // 設定情報にデフォルト値をセットする
+        PreferenceManager.setDefaultValues(CaptureAndUploadActivity.this, R.xml.preference, false);
     }
 
     @Override
@@ -167,6 +181,81 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
             mCamera.release();
             mCamera = null;
         }
+    }
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        switch(requestCode) {
+        case CaptureAndUploadActivity.REQUEST_IMAGE_FROM_GALLERY:
+            // ギャラリーから画像を取得した場合
+            if(resultCode == Activity.RESULT_OK) {
+                postPicture(data.getData());
+            }
+
+            break;
+        case CaptureAndUploadActivity.REQUEST_INPUT_COMMENT:
+            if(resultCode == Activity.RESULT_OK) {
+                String comment = data.getStringExtra("comment");
+                Uri imageUri = data.getData();
+                postPicture(comment, imageUri);
+            }
+            this.onResume();
+
+            break;
+        default:
+            break;
+        }
+    }
+
+    /***
+     * オプションメニューを作成
+     */
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        boolean returnBool = super.onCreateOptionsMenu(menu);
+
+        getMenuInflater().inflate(R.menu.menu, menu);
+
+        return(returnBool);
+    }
+
+    /***
+     * オプションメニューの項目が選択された際の動作を設定
+     */
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        boolean returnBool = super.onOptionsItemSelected(item);
+
+        Intent mIntent;
+        switch(item.getItemId()) {
+        case R.id.menu_call_gallery:
+            // ギャラリーを開く
+            mIntent = new Intent();
+            mIntent.setType("image/*");
+            mIntent.setAction(Intent.ACTION_PICK);
+            startActivityForResult(mIntent, CaptureAndUploadActivity.REQUEST_IMAGE_FROM_GALLERY);
+
+            break;
+        case R.id.menu_call_browser:
+            // アップロード先を開く
+            Uri mUri = Uri.parse(CaptureAndUploadActivity.DESTINATION_ADDRESS);
+            mIntent = new Intent(Intent.ACTION_VIEW, mUri);
+            startActivity(mIntent);
+
+            break;
+        case R.id.menu_setting:
+            // 設定画面を開く
+            mIntent = new Intent(CaptureAndUploadActivity.this, SettingActivity.class);
+            startActivity(mIntent);
+
+            break;
+        default:
+            break;
+        }
+
+        return(returnBool);
     }
 
     /***
@@ -199,7 +288,7 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
 
         // ファイル名を生成
         SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMddkkmmss");
-        String fileName = "tottepost_" + dateFormat.format(new Date()) + ".jpg";
+        String fileName = "CAndU_" + dateFormat.format(new Date()) + ".jpg";
         File destFile = new File(baseDir, fileName);
 
         // 生成したファイル名で新規ファイルを登録
@@ -215,64 +304,21 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
             fos.flush();
             fos.close();
         }
-        catch(FileNotFoundException e) {
+        catch(Exception e) {
             isSaveSucceed = false;
             getContentResolver().delete(destUri, null, null);
-            e.printStackTrace();
-        }
-        catch(IOException e) {
-            isSaveSucceed = false;
-            getContentResolver().delete(destUri, null, null);
-            e.printStackTrace();
-        }
-
-        try {
-            /***
-             * 画像の向きを書き込む
-             * 参考:AndroidでExif情報編集 – Android | team-hiroq
-             *      http://team-hiroq.com/blog/android/android_jpeg_exif.html
-             *
-             *      [AIR][Android] CameraUIで撮影した写真の回転が、機種によってバラバラなのをExifで補整する！  |    R o m a t i c A : Blog  : Archive
-             *      http://blog.romatica.com/2011/04/04/air-for-android-cameraui-exif/
-             *
-             * 画面の向きを検出する
-             * 参考:Androidアプリ開発メモ027：画面の向き: ぷ～ろぐ
-             *      http://into.cocolog-nifty.com/pulog/2011/10/android027-9b2b.html
-             */
-            ExifInterface mExifInterface = new ExifInterface(destFile.getAbsolutePath());
-            WindowManager wm = (WindowManager)getSystemService(Context.WINDOW_SERVICE);
-            Display mDisplay = wm.getDefaultDisplay();
-            switch(mDisplay.getRotation()) {
-            case Surface.ROTATION_0:
-                mExifInterface.setAttribute(ExifInterface.TAG_ORIENTATION, "6");
-
-                break;
-            case Surface.ROTATION_90:
-                mExifInterface.setAttribute(ExifInterface.TAG_ORIENTATION, "1");
-
-                break;
-            case Surface.ROTATION_270:
-                mExifInterface.setAttribute(ExifInterface.TAG_ORIENTATION, "3");
-
-                break;
-            default:
-                break;
-            }
-            mExifInterface.saveAttributes();
-        }
-        catch(IOException e) {
-            isSaveSucceed = false;
             e.printStackTrace();
         }
 
         if(isSaveSucceed) {
-            UploadTask upTask = new UploadTask(destFile);
-            upTask.execute();
+            postPicture(destUri);
         }
 
         capturing = false;
         mCamera.cancelAutoFocus();
-        mCamera.startPreview();
+        if(!PreferenceStore.isCommentEnable(CaptureAndUploadActivity.this)) {
+            mCamera.startPreview();
+        }
         captureButton.setEnabled(true);
     }
 
@@ -337,30 +383,33 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
             }
             preview.setLayoutParams(lParams);
 
-            mCamera.setParameters(params);
-
+            // 画面の表示方向とExif情報に書き込む向きを変更
+            int rotation = 0;
             switch(mDisplay.getRotation()) {
             case Surface.ROTATION_0:
-                mCamera.setDisplayOrientation(90);
+                rotation = 90;
 
                 break;
             case Surface.ROTATION_90:
-                mCamera.setDisplayOrientation(0);
-
                 break;
             case Surface.ROTATION_270:
-                mCamera.setDisplayOrientation(180);
+                rotation = 180;
 
                 break;
             default:
                 break;
             }
 
+            mCamera.setDisplayOrientation(rotation);
+            params.setRotation(rotation);
+            mCamera.setParameters(params);
+
             mCamera.setPreviewDisplay(preview.getHolder());
+            mCamera.cancelAutoFocus();
             mCamera.startPreview();
         }
         catch(Exception e) {
-            Toast.makeText(getApplicationContext(), getString(R.string.error_launch_camera_failed), Toast.LENGTH_SHORT).show();
+            Toast.makeText(CaptureAndUploadActivity.this, getString(R.string.error_launch_camera_failed), Toast.LENGTH_SHORT).show();
 
             finish();
         }
@@ -379,6 +428,49 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
     public void surfaceDestroyed(SurfaceHolder holder) {}
 
     /***
+     * 画像を投稿する
+     * "コメントを投稿する"が有効であれば先にコメントを取得する
+     *
+     * @param inputUri
+     *     投稿する画像のUri
+     */
+    public void postPicture(Uri inputUri) {
+        if(inputUri != null) {
+            if(PreferenceStore.isCommentEnable(CaptureAndUploadActivity.this)) {
+                Intent mIntent = new Intent(CaptureAndUploadActivity.this, BlankActivity.class);
+                mIntent.setData(inputUri);
+                startActivityForResult(mIntent, CaptureAndUploadActivity.REQUEST_INPUT_COMMENT);
+            }
+            else {
+                postPicture("", inputUri);
+            }
+        }
+        else {
+            Toast.makeText(CaptureAndUploadActivity.this, getString(R.string.error_image_empty), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+
+    /***
+     * コメントと画像を投稿する
+     *
+     * @param inputComment
+     *     投稿するコメント
+     * @param inputUri
+     *     投稿する画像のUri
+     */
+    public void postPicture(String inputComment, Uri inputUri) {
+        if(inputUri != null) {
+            Toast.makeText(CaptureAndUploadActivity.this, getString(R.string.main_uploading), Toast.LENGTH_LONG).show();
+            UploadTask upTask = new UploadTask(inputComment, inputUri);
+            upTask.execute();
+        }
+        else {
+            Toast.makeText(CaptureAndUploadActivity.this, getString(R.string.error_image_empty), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /***
      * AsyncTaskによる非同期処理
      * 参考:Asynctaskを使って非同期処理を行う | Tech Booster
      *      http://techbooster.org/android/application/1339/
@@ -386,10 +478,25 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
     class UploadTask extends AsyncTask<Void, Void, String> {
         // 変数の宣言
         private int noteID;
-        private File mFile;
+        private String contributor;
+        private String comment;
+        private String passwd;
+        private File image;
 
-        public UploadTask(File inputFile) {
-            mFile = inputFile;
+        public UploadTask(String inputComment, Uri inputUri) {
+            contributor = PreferenceStore.getContributor(CaptureAndUploadActivity.this);
+            if(contributor.length() == 0) {
+                contributor = getString(R.string.setting_no_name);
+            }
+            comment = inputComment;
+            passwd = PreferenceStore.getPasswd(CaptureAndUploadActivity.this);
+            if(passwd.length() == 0) {
+                passwd = getString(R.string.setting_no_passwd);
+            }
+            ContentResolver resolver = getContentResolver();
+            Cursor mCursor = resolver.query(inputUri, null, null, null, null);
+            mCursor.moveToFirst();
+            image = new File(mCursor.getString(mCursor.getColumnIndex(MediaStore.MediaColumns.DATA)));
         }
 
         @Override
@@ -409,18 +516,18 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
 
             // アップロード中であることを通知領域に表示する
             NotificationManager manager = (NotificationManager)getSystemService(Context.NOTIFICATION_SERVICE);
-            Intent launchIntent = new Intent(getApplicationContext(), CaptureAndUploadActivity.class);
-            PendingIntent contentIntent = PendingIntent.getActivity(getApplicationContext(), 0, launchIntent, Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            Intent launchIntent = new Intent(CaptureAndUploadActivity.this, CaptureAndUploadActivity.class);
+            PendingIntent contentIntent = PendingIntent.getActivity(CaptureAndUploadActivity.this, 0, launchIntent, Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
-            String message = getString(R.string.main_uploading) + " - " + mFile.getName();
-            Notification note = new Notification(android.R.drawable.ic_menu_info_details, message, System.currentTimeMillis());
-            note.setLatestEventInfo(getApplicationContext(), message, message, contentIntent);
+            String noteMessage = getString(R.string.main_uploading) + " - " + image.getName();
+            Notification note = new Notification(android.R.drawable.stat_sys_upload, noteMessage, System.currentTimeMillis());
+            note.setLatestEventInfo(CaptureAndUploadActivity.this, noteMessage, noteMessage, contentIntent);
             note.flags |= Notification.FLAG_AUTO_CANCEL;
 
             noteID = (int)(Math.random() * 16777216);
             manager.notify(noteID, note);
 
-            if(mFile != null) {
+            if(image != null) {
                 DefaultHttpClient client = new DefaultHttpClient();
                 try {
                     /***
@@ -428,15 +535,15 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
                      * 参考:【Android】サーバへのFormっぽいファイルアップロード | cozzbox
                      *      http://www.cozzbox.com/wordpress/archives/217
                      */
-                    String url = "http://kingdragon.ddo.jp/test1234/uploadFileCheck.php";
+                    String url = CaptureAndUploadActivity.DESTINATION_ADDRESS + "uploadFileCheck.php";
                     HttpPost request = new HttpPost(url);
                     MultipartEntity entity = new MultipartEntity();
 
-                    entity.addPart("contributor", new StringBody("ななしさん", "text/plain", Charset.forName("UTF-8")));
-                    entity.addPart("comment", new StringBody("", "text/plain", Charset.forName("UTF-8")));
-                    entity.addPart("passwd", new StringBody("testtest", "text/plain", Charset.forName("UTF-8")));
-                    entity.addPart("passwd_conf", new StringBody("testtest", "text/plain", Charset.forName("UTF-8")));
-                    entity.addPart("file", new FileBody(mFile));
+                    entity.addPart("contributor", new StringBody(contributor, "text/plain", Charset.forName("UTF-8")));
+                    entity.addPart("comment", new StringBody(comment, "text/plain", Charset.forName("UTF-8")));
+                    entity.addPart("passwd", new StringBody(passwd, "text/plain", Charset.forName("UTF-8")));
+                    entity.addPart("passwd_conf", new StringBody(passwd, "text/plain", Charset.forName("UTF-8")));
+                    entity.addPart("file", new FileBody(image));
                     request.setEntity(entity);
 
                     retString = client.execute(request, new ResponseHandler<String>() {
@@ -448,12 +555,12 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
                             switch(status) {
                             case HttpStatus.SC_OK:
                                 retString = EntityUtils.toString(response.getEntity(), "UTF-8");
+
                                 break;
                             case HttpStatus.SC_NOT_FOUND:
-                                retString = getString(R.string.error_missing_parameters);
-                                break;
                             default:
-                                retString = getString(R.string.error_upload_failed) + " - " + mFile.getName();
+                                retString = getString(R.string.error_upload_failed);
+
                                 break;
                             }
 
@@ -476,17 +583,32 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
         public void onPostExecute(String result) {
             super.onPostExecute(result);
 
-            // アップロードが完了したら通知を更新する
             NotificationManager manager = (NotificationManager)getSystemService(Context.NOTIFICATION_SERVICE);
-            Intent launchIntent = new Intent(getApplicationContext(), CaptureAndUploadActivity.class);
-            PendingIntent contentIntent = PendingIntent.getActivity(getApplicationContext(), 0, launchIntent, Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            Intent launchIntent = new Intent(CaptureAndUploadActivity.this, CaptureAndUploadActivity.class);
+            PendingIntent contentIntent = PendingIntent.getActivity(CaptureAndUploadActivity.this, 0, launchIntent, Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
-            String message = getString(R.string.main_upload_success) + " - " + mFile.getName();
-            Notification note = new Notification(android.R.drawable.ic_menu_info_details, message, System.currentTimeMillis());
-            note.setLatestEventInfo(getApplicationContext(), message, message, contentIntent);
-            note.flags |= Notification.FLAG_AUTO_CANCEL;
+            if(!result.equals(getString(R.string.error_upload_failed))) {
+                // アップロードが完了したらトーストと通知を更新する
+                Toast.makeText(CaptureAndUploadActivity.this, getString(R.string.main_upload_finish), Toast.LENGTH_SHORT).show();
 
-            manager.notify(noteID, note);
+                String noteMessage = getString(R.string.main_upload_finish) + " - " + image.getName();
+                Notification note = new Notification(android.R.drawable.checkbox_on_background, noteMessage, System.currentTimeMillis());
+                note.setLatestEventInfo(CaptureAndUploadActivity.this, noteMessage, noteMessage, contentIntent);
+                note.flags |= Notification.FLAG_AUTO_CANCEL;
+
+                manager.notify(noteID, note);
+            }
+            else {
+                // アップロードに失敗したらトーストと通知を更新する
+                Toast.makeText(CaptureAndUploadActivity.this, getString(R.string.error_upload_failed), Toast.LENGTH_SHORT).show();
+
+                String noteMessage = getString(R.string.error_upload_failed) + " - " + image.getName();
+                Notification note = new Notification(android.R.drawable.ic_delete, noteMessage, System.currentTimeMillis());
+                note.setLatestEventInfo(CaptureAndUploadActivity.this, noteMessage, noteMessage, contentIntent);
+                note.flags |= Notification.FLAG_AUTO_CANCEL;
+
+                manager.notify(noteID, note);
+            }
             uploading = false;
         }
     }

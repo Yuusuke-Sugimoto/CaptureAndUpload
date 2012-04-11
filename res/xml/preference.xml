@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android" >
+    <PreferenceCategory android:title="@string/setting_general_title" >
+        <EditTextPreference android:title="@string/setting_contributor_title"
+            android:key="setting_contributor"
+            android:summary="@string/setting_not_configured"
+            android:dialogTitle="@string/setting_contributor_title"
+            android:hint="@string/setting_contributor_hint"
+            android:inputType="text"
+            android:maxLength="20"
+            android:positiveButtonText="@string/ok"
+            android:negativeButtonText="@string/cancel" />
+        <CheckBoxPreference android:title="@string/setting_use_comment_title"
+            android:key="setting_use_comment"
+            android:summaryOn="@string/setting_post_enable"
+            android:summaryOff="@string/setting_post_disable" />
+        <EditTextPreference android:title="@string/setting_passwd_title"
+            android:key="setting_passwd"
+            android:summary="@string/setting_not_configured"
+            android:dialogTitle="@string/setting_passwd_title"
+            android:hint="@string/setting_passwd_hint"
+            android:inputType="textPassword"
+            android:digits="@string/passwd_format"
+            android:maxLength="16"
+            android:positiveButtonText="@string/ok"
+            android:negativeButtonText="@string/cancel" />
+    </PreferenceCategory>
+</PreferenceScreen>

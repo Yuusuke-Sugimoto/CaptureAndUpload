@@ -5,15 +5,44 @@
     <string name="main_label_capture">撮影</string>
     <string name="main_exit_title">アプリの終了</string>
     <string name="main_exit_message">アプリを終了してもよろしいですか?</string>
-    <string name="main_uploading">アップロード中</string>
-    <string name="main_upload_success">アップロード成功</string>
+    <string name="main_uploading">アップロード中…</string>
+    <string name="main_upload_finish">アップロード完了</string>
+
+    <string name="blank_description">背景</string>
+
+    <string name="dialog_title">コメント入力画面</string>
+    <string name="dialog_comment_hint">コメントを入力(50文字まで)</string>
+    <string name="dialog_label_post">投稿</string>
+
+    <string name="menu_call_gallery">ギャラリーから投稿する</string>
+    <string name="menu_call_browser">アップロード先を開く</string>
+    <string name="menu_setting">設定画面を開く</string>
+
+    <string name="setting_title">設定メニュー</string>
+    <string name="setting_general_title">一般設定</string>
+    <string name="setting_contributor_title">投稿者名を設定</string>
+    <string name="setting_contributor_hint">投稿者名を設定(20文字まで)</string>
+    <string name="setting_use_comment_title">コメントを投稿する</string>
+    <string name="setting_passwd_title">パスワードを設定</string>
+    <string name="setting_passwd_hint">パスワードを設定(6～16文字)</string>
+    <string name="setting_post_enable">投稿する</string>
+    <string name="setting_post_disable">投稿しない</string>
+    <string name="setting_not_configured">未設定(hogehoge)</string>
+    <string name="setting_configured">設定済</string>
+    <string name="setting_no_name">ななしさん</string>
+    <string name="setting_no_passwd">hogehoge</string>
 
     <string name="yes">はい</string>
     <string name="no">いいえ</string>
     <string name="ok">OK</string>
+    <string name="cancel">キャンセル</string>
 
+    <string name="passwd_format">0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz</string>
+
+    <string name="error_title">エラー</string>
     <string name="error_make_directory_failed">保存用ディレクトリの作成に失敗しました</string>
     <string name="error_launch_camera_failed">カメラの起動に失敗しました</string>
-    <string name="error_missing_parameters">パラメータがありません</string>
+    <string name="error_image_empty">投稿する画像がありません</string>
     <string name="error_upload_failed">アップロード失敗</string>
+    <string name="error_illegal_length_passwd">パスワードの長さが不正なため、変更されませんでした。</string>
 </resources>
