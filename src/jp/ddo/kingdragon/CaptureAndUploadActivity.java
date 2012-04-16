@@ -74,7 +74,7 @@ public class CaptureAndUploadActivity extends Activity
     private Sensor mAccelerometer;
     // mMagneticField - 地磁気センサ
     private Sensor mMagneticField;
-    
+
     // capturing - 撮影中かどうか
     // true:撮影中 false:非撮影中
     private boolean capturing;
@@ -98,10 +98,10 @@ public class CaptureAndUploadActivity extends Activity
     // mCamera - カメラのインスタンス
     private Camera mCamera;
     private int rotation;
-    
+
     // numOfTasks - 現在のタスク数
     private int numOfTasks;
-    
+
     // 配列の宣言
     // magneticValues - 地磁気センサによって読み取られた値が格納される
     private float[] magneticValues;
@@ -198,7 +198,7 @@ public class CaptureAndUploadActivity extends Activity
 
         // 設定情報にデフォルト値をセットする
         PreferenceManager.setDefaultValues(CaptureAndUploadActivity.this, R.xml.preference, false);
-        
+
         // 傾きを検出するための設定
         mSensorManager = (SensorManager)getSystemService(SENSOR_SERVICE);
         mAccelerometer = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
@@ -208,7 +208,7 @@ public class CaptureAndUploadActivity extends Activity
     @Override
     public void onResume() {
         super.onResume();
-        
+
         mSensorManager.registerListener(CaptureAndUploadActivity.this, mAccelerometer, SensorManager.SENSOR_DELAY_UI);
         mSensorManager.registerListener(CaptureAndUploadActivity.this, mMagneticField, SensorManager.SENSOR_DELAY_UI);
 
@@ -220,7 +220,7 @@ public class CaptureAndUploadActivity extends Activity
         super.onPause();
 
         mSensorManager.unregisterListener(CaptureAndUploadActivity.this);
-        
+
         if(mCamera != null) {
             mCamera.stopPreview();
             mCamera.release();
@@ -437,7 +437,7 @@ public class CaptureAndUploadActivity extends Activity
             mCamera.setPreviewDisplay(preview.getHolder());
             mCamera.cancelAutoFocus();
             mCamera.startPreview();
-            
+
             launched = true;
         }
         catch(Exception e) {
@@ -473,16 +473,16 @@ public class CaptureAndUploadActivity extends Activity
         switch(event.sensor.getType()) {
         case Sensor.TYPE_MAGNETIC_FIELD:
             magneticValues = event.values.clone();
-            
+
             break;
         case Sensor.TYPE_ACCELEROMETER:
             accelValues = event.values.clone();
-            
+
             break;
         default:
             break;
         }
-        
+
         float[] radians = new float[3];
         if(magneticValues != null && accelValues != null) {
             float[] inR = new float[16];
@@ -522,19 +522,35 @@ public class CaptureAndUploadActivity extends Activity
             }
         }
     }
-    
+
+    /***
+     * 画面の向きを回転させる
+     *
+     * @param inputRotation
+     *     画面の角度
+     */
     public void changeRotation(int inputRotation) {
         // Exif情報に書き込む向きを設定
         Camera.Parameters params = mCamera.getParameters();
         params.setRotation(inputRotation);
         mCamera.setParameters(params);
-        
+
         // ボタンを回転
-        RotateAnimation animation = new RotateAnimation((450 - rotation) % 360, (450 - inputRotation) % 360, captureButton.getWidth() / 2, captureButton.getHeight() / 2);
+        float beginRotation = (450 - rotation) % 360;
+        float destRotation  = (450 - inputRotation) % 360;
+        if(Math.abs(beginRotation - destRotation) >= 270) {
+            if(beginRotation < destRotation) {
+                beginRotation += 360;
+            }
+            else {
+                destRotation += 360;
+            }
+        }
+        RotateAnimation animation = new RotateAnimation(beginRotation, destRotation, captureButton.getWidth() / 2, captureButton.getHeight() / 2);
         animation.setDuration(200);
         animation.setFillAfter(true);
         captureButton.startAnimation(animation);
-        
+
         rotation = inputRotation;
     }
 
@@ -577,7 +593,7 @@ public class CaptureAndUploadActivity extends Activity
             TextView progress = (TextView)findViewById(R.id.progress);
             progress.setText(getString(R.string.main_uploading) + "\n" + getString(R.string.main_remain_task) + numOfTasks + getString(R.string.unit));
             progress.setVisibility(View.VISIBLE);
-            
+
             UploadTask upTask = new UploadTask(inputComment, inputUri);
             upTask.execute();
         }
@@ -635,12 +651,12 @@ public class CaptureAndUploadActivity extends Activity
                 NotificationManager manager = (NotificationManager)getSystemService(Context.NOTIFICATION_SERVICE);
                 Intent launchIntent = new Intent(CaptureAndUploadActivity.this, CaptureAndUploadActivity.class);
                 PendingIntent contentIntent = PendingIntent.getActivity(CaptureAndUploadActivity.this, 0, launchIntent, Intent.FLAG_ACTIVITY_CLEAR_TOP);
-    
+
                 String noteMessage = getString(R.string.main_uploading) + " - " + image.getName();
                 Notification note = new Notification(android.R.drawable.stat_sys_upload, noteMessage, System.currentTimeMillis());
                 note.setLatestEventInfo(CaptureAndUploadActivity.this, noteMessage, noteMessage, contentIntent);
                 note.flags |= Notification.FLAG_AUTO_CANCEL;
-    
+
                 noteID = (int)(Math.random() * 16777216);
                 manager.notify(noteID, note);
             }
@@ -705,27 +721,27 @@ public class CaptureAndUploadActivity extends Activity
                 NotificationManager manager = (NotificationManager)getSystemService(Context.NOTIFICATION_SERVICE);
                 Intent launchIntent = new Intent(CaptureAndUploadActivity.this, CaptureAndUploadActivity.class);
                 PendingIntent contentIntent = PendingIntent.getActivity(CaptureAndUploadActivity.this, 0, launchIntent, Intent.FLAG_ACTIVITY_CLEAR_TOP);
-    
+
                 if(!result.equals(getString(R.string.error_upload_failed))) {
                     // アップロードが完了したらトーストと通知を更新する
                     Toast.makeText(CaptureAndUploadActivity.this, getString(R.string.main_upload_finish), Toast.LENGTH_SHORT).show();
-    
+
                     String noteMessage = getString(R.string.main_upload_finish) + " - " + image.getName();
                     Notification note = new Notification(android.R.drawable.checkbox_on_background, noteMessage, System.currentTimeMillis());
                     note.setLatestEventInfo(CaptureAndUploadActivity.this, noteMessage, noteMessage, contentIntent);
                     note.flags |= Notification.FLAG_AUTO_CANCEL;
-    
+
                     manager.notify(noteID, note);
                 }
                 else {
                     // アップロードに失敗したらトーストと通知を更新する
                     Toast.makeText(CaptureAndUploadActivity.this, getString(R.string.error_upload_failed), Toast.LENGTH_SHORT).show();
-    
+
                     String noteMessage = getString(R.string.error_upload_failed) + " - " + image.getName();
                     Notification note = new Notification(android.R.drawable.ic_delete, noteMessage, System.currentTimeMillis());
                     note.setLatestEventInfo(CaptureAndUploadActivity.this, noteMessage, noteMessage, contentIntent);
                     note.flags |= Notification.FLAG_AUTO_CANCEL;
-    
+
                     manager.notify(noteID, note);
                 }
             }
@@ -739,7 +755,7 @@ public class CaptureAndUploadActivity extends Activity
                 progress.setText("");
                 progress.setVisibility(View.INVISIBLE);
             }
-            
+
             uploading = false;
         }
     }
