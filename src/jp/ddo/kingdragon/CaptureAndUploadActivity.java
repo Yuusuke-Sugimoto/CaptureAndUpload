@@ -12,6 +12,10 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.database.Cursor;
 import android.hardware.Camera;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
@@ -22,14 +26,15 @@ import android.view.Display;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.MotionEvent;
-import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.View.OnTouchListener;
 import android.view.WindowManager;
-import android.widget.Button;
+import android.view.animation.RotateAnimation;
+import android.widget.ImageButton;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.File;
@@ -51,7 +56,9 @@ import org.apache.http.entity.mime.content.StringBody;
 import org.apache.http.impl.client.DefaultHttpClient;
 import org.apache.http.util.EntityUtils;
 
-public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.Callback, Camera.PictureCallback {
+public class CaptureAndUploadActivity extends Activity
+                                      implements SurfaceHolder.Callback, Camera.PictureCallback,
+                                                 SensorEventListener {
     // 定数の宣言
     // アップロード先
     public static final String DESTINATION_ADDRESS = "http://kingdragon.ddo.jp/test1234/";
@@ -61,6 +68,13 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
     public static final int REQUEST_INPUT_COMMENT = 2;
 
     // 変数の宣言
+    // mSensorManager - センサマネージャ
+    private SensorManager mSensorManager;
+    // mAccelerometer - 加速度センサ
+    private Sensor mAccelerometer;
+    // mMagneticField - 地磁気センサ
+    private Sensor mMagneticField;
+    
     // capturing - 撮影中かどうか
     // true:撮影中 false:非撮影中
     private boolean capturing;
@@ -70,16 +84,31 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
     // uploading - アップロード中かどうか
     // true:アップロード中 false:非アップロード中
     private boolean uploading;
+    // launched - カメラが起動したかどうか
+    // true:起動済 false:起動前
+    private boolean launched;
 
     // baseDir - 保存用ディレクトリ
     private File baseDir;
 
     // captureButton - 撮影ボタン
-    private Button captureButton;
+    private ImageButton captureButton;
     // preview - プレビュー部分
     private SurfaceView preview;
     // mCamera - カメラのインスタンス
     private Camera mCamera;
+    private int rotation;
+    
+    // numOfTasks - 現在のタスク数
+    private int numOfTasks;
+    
+    // 配列の宣言
+    // magneticValues - 地磁気センサによって読み取られた値が格納される
+    private float[] magneticValues;
+    // accelValues - 加速度センサによって読み取られた値が格納される
+    private float[] accelValues;
+    // degrees - 現在の各方向の傾きが格納される
+    private int[] degrees;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -105,6 +134,12 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
         capturing = false;
         focusing = false;
         uploading = false;
+        launched = false;
+        rotation = 90;
+        numOfTasks = 0;
+        magneticValues = null;
+        accelValues = null;
+        degrees = new int[3];
 
         // 保存用ディレクトリの作成
         baseDir = new File(Environment.getExternalStorageDirectory(), "CaptureAndUpload");
@@ -122,7 +157,7 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
             finish();
         }
 
-        captureButton = (Button)findViewById(R.id.capture);
+        captureButton = (ImageButton)findViewById(R.id.capture);
         captureButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -142,7 +177,7 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
             @Override
             public boolean onTouch(View v, MotionEvent event) {
                 // 画面がタッチされたらオートフォーカスを実行
-                if(!focusing) {
+                if(launched && !focusing) {
                     // オートフォーカス中でなければオートフォーカスを実行
                     // フラグを更新
                     focusing = true;
@@ -163,11 +198,19 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
 
         // 設定情報にデフォルト値をセットする
         PreferenceManager.setDefaultValues(CaptureAndUploadActivity.this, R.xml.preference, false);
+        
+        // 傾きを検出するための設定
+        mSensorManager = (SensorManager)getSystemService(SENSOR_SERVICE);
+        mAccelerometer = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        mMagneticField = mSensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
     }
 
     @Override
     public void onResume() {
         super.onResume();
+        
+        mSensorManager.registerListener(CaptureAndUploadActivity.this, mAccelerometer, SensorManager.SENSOR_DELAY_UI);
+        mSensorManager.registerListener(CaptureAndUploadActivity.this, mMagneticField, SensorManager.SENSOR_DELAY_UI);
 
         surfaceChanged(preview.getHolder(), 0, 0, 0);
     }
@@ -176,11 +219,14 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
     public void onPause() {
         super.onPause();
 
+        mSensorManager.unregisterListener(CaptureAndUploadActivity.this);
+        
         if(mCamera != null) {
             mCamera.stopPreview();
             mCamera.release();
             mCamera = null;
         }
+        launched = false;
     }
 
     @Override
@@ -382,31 +428,17 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
                 lParams.width  = preSize.height * mDisplay.getHeight() / preSize.width;
             }
             preview.setLayoutParams(lParams);
-
-            // 画面の表示方向とExif情報に書き込む向きを変更
-            int rotation = 0;
-            switch(mDisplay.getRotation()) {
-            case Surface.ROTATION_0:
-                rotation = 90;
-
-                break;
-            case Surface.ROTATION_90:
-                break;
-            case Surface.ROTATION_270:
-                rotation = 180;
-
-                break;
-            default:
-                break;
-            }
-
-            mCamera.setDisplayOrientation(rotation);
-            params.setRotation(rotation);
+            params.setRotation(90);
             mCamera.setParameters(params);
+
+            // 画面の表示方向を変更
+            mCamera.setDisplayOrientation(90);
 
             mCamera.setPreviewDisplay(preview.getHolder());
             mCamera.cancelAutoFocus();
             mCamera.startPreview();
+            
+            launched = true;
         }
         catch(Exception e) {
             Toast.makeText(CaptureAndUploadActivity.this, getString(R.string.error_launch_camera_failed), Toast.LENGTH_SHORT).show();
@@ -426,6 +458,85 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
      */
     @Override
     public void surfaceDestroyed(SurfaceHolder holder) {}
+
+    /***
+     * センサの精度が変更された際に呼び出される
+     */
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {}
+
+    /***
+     * センサの値が変化した際に呼び出される
+     */
+    @Override
+    public void onSensorChanged(SensorEvent event) {
+        switch(event.sensor.getType()) {
+        case Sensor.TYPE_MAGNETIC_FIELD:
+            magneticValues = event.values.clone();
+            
+            break;
+        case Sensor.TYPE_ACCELEROMETER:
+            accelValues = event.values.clone();
+            
+            break;
+        default:
+            break;
+        }
+        
+        float[] radians = new float[3];
+        if(magneticValues != null && accelValues != null) {
+            float[] inR = new float[16];
+            float[] outR = new float[16];
+            SensorManager.getRotationMatrix(inR, null, accelValues, magneticValues);
+            SensorManager.remapCoordinateSystem(inR, SensorManager.AXIS_X, SensorManager.AXIS_Z, outR);
+            SensorManager.getOrientation(outR, radians);
+        }
+        for(int i = 0; i < event.values.length; i++) {
+            degrees[i] = (int)Math.floor(Math.toDegrees(radians[i]));
+        }
+
+        if(degrees != null) {
+            if(Math.abs(degrees[2]) <= 20) {
+                // 縦
+                if(rotation != 90) {
+                    changeRotation(90);
+                }
+            }
+            else if(degrees[2] >= -110 && degrees[2] <= -70) {
+                // 左に90度傾けた状態
+                if(rotation != 0) {
+                    changeRotation(0);
+                }
+            }
+            else if(Math.abs(degrees[2]) >= 160) {
+                // 逆さ
+                if(rotation != 270) {
+                    changeRotation(270);
+                }
+            }
+            else if(degrees[2] >= 70 && degrees[2] <= 110) {
+                // 右に90度傾けた状態
+                if(rotation != 180) {
+                    changeRotation(180);
+                }
+            }
+        }
+    }
+    
+    public void changeRotation(int inputRotation) {
+        // Exif情報に書き込む向きを設定
+        Camera.Parameters params = mCamera.getParameters();
+        params.setRotation(inputRotation);
+        mCamera.setParameters(params);
+        
+        // ボタンを回転
+        RotateAnimation animation = new RotateAnimation((450 - rotation) % 360, (450 - inputRotation) % 360, captureButton.getWidth() / 2, captureButton.getHeight() / 2);
+        animation.setDuration(200);
+        animation.setFillAfter(true);
+        captureButton.startAnimation(animation);
+        
+        rotation = inputRotation;
+    }
 
     /***
      * 画像を投稿する
@@ -462,6 +573,11 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
     public void postPicture(String inputComment, Uri inputUri) {
         if(inputUri != null) {
             Toast.makeText(CaptureAndUploadActivity.this, getString(R.string.main_uploading), Toast.LENGTH_LONG).show();
+            numOfTasks++;
+            TextView progress = (TextView)findViewById(R.id.progress);
+            progress.setText(getString(R.string.main_uploading) + "\n" + getString(R.string.main_remain_task) + numOfTasks + getString(R.string.unit));
+            progress.setVisibility(View.VISIBLE);
+            
             UploadTask upTask = new UploadTask(inputComment, inputUri);
             upTask.execute();
         }
@@ -514,18 +630,20 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
             }
             uploading = true;
 
-            // アップロード中であることを通知領域に表示する
-            NotificationManager manager = (NotificationManager)getSystemService(Context.NOTIFICATION_SERVICE);
-            Intent launchIntent = new Intent(CaptureAndUploadActivity.this, CaptureAndUploadActivity.class);
-            PendingIntent contentIntent = PendingIntent.getActivity(CaptureAndUploadActivity.this, 0, launchIntent, Intent.FLAG_ACTIVITY_CLEAR_TOP);
-
-            String noteMessage = getString(R.string.main_uploading) + " - " + image.getName();
-            Notification note = new Notification(android.R.drawable.stat_sys_upload, noteMessage, System.currentTimeMillis());
-            note.setLatestEventInfo(CaptureAndUploadActivity.this, noteMessage, noteMessage, contentIntent);
-            note.flags |= Notification.FLAG_AUTO_CANCEL;
-
-            noteID = (int)(Math.random() * 16777216);
-            manager.notify(noteID, note);
+            if(PreferenceStore.isStatusEnable(CaptureAndUploadActivity.this)) {
+                // アップロード中であることを通知領域に表示する
+                NotificationManager manager = (NotificationManager)getSystemService(Context.NOTIFICATION_SERVICE);
+                Intent launchIntent = new Intent(CaptureAndUploadActivity.this, CaptureAndUploadActivity.class);
+                PendingIntent contentIntent = PendingIntent.getActivity(CaptureAndUploadActivity.this, 0, launchIntent, Intent.FLAG_ACTIVITY_CLEAR_TOP);
+    
+                String noteMessage = getString(R.string.main_uploading) + " - " + image.getName();
+                Notification note = new Notification(android.R.drawable.stat_sys_upload, noteMessage, System.currentTimeMillis());
+                note.setLatestEventInfo(CaptureAndUploadActivity.this, noteMessage, noteMessage, contentIntent);
+                note.flags |= Notification.FLAG_AUTO_CANCEL;
+    
+                noteID = (int)(Math.random() * 16777216);
+                manager.notify(noteID, note);
+            }
 
             if(image != null) {
                 DefaultHttpClient client = new DefaultHttpClient();
@@ -583,32 +701,45 @@ public class CaptureAndUploadActivity extends Activity implements SurfaceHolder.
         public void onPostExecute(String result) {
             super.onPostExecute(result);
 
-            NotificationManager manager = (NotificationManager)getSystemService(Context.NOTIFICATION_SERVICE);
-            Intent launchIntent = new Intent(CaptureAndUploadActivity.this, CaptureAndUploadActivity.class);
-            PendingIntent contentIntent = PendingIntent.getActivity(CaptureAndUploadActivity.this, 0, launchIntent, Intent.FLAG_ACTIVITY_CLEAR_TOP);
-
-            if(!result.equals(getString(R.string.error_upload_failed))) {
-                // アップロードが完了したらトーストと通知を更新する
-                Toast.makeText(CaptureAndUploadActivity.this, getString(R.string.main_upload_finish), Toast.LENGTH_SHORT).show();
-
-                String noteMessage = getString(R.string.main_upload_finish) + " - " + image.getName();
-                Notification note = new Notification(android.R.drawable.checkbox_on_background, noteMessage, System.currentTimeMillis());
-                note.setLatestEventInfo(CaptureAndUploadActivity.this, noteMessage, noteMessage, contentIntent);
-                note.flags |= Notification.FLAG_AUTO_CANCEL;
-
-                manager.notify(noteID, note);
+            if(PreferenceStore.isStatusEnable(CaptureAndUploadActivity.this)) {
+                NotificationManager manager = (NotificationManager)getSystemService(Context.NOTIFICATION_SERVICE);
+                Intent launchIntent = new Intent(CaptureAndUploadActivity.this, CaptureAndUploadActivity.class);
+                PendingIntent contentIntent = PendingIntent.getActivity(CaptureAndUploadActivity.this, 0, launchIntent, Intent.FLAG_ACTIVITY_CLEAR_TOP);
+    
+                if(!result.equals(getString(R.string.error_upload_failed))) {
+                    // アップロードが完了したらトーストと通知を更新する
+                    Toast.makeText(CaptureAndUploadActivity.this, getString(R.string.main_upload_finish), Toast.LENGTH_SHORT).show();
+    
+                    String noteMessage = getString(R.string.main_upload_finish) + " - " + image.getName();
+                    Notification note = new Notification(android.R.drawable.checkbox_on_background, noteMessage, System.currentTimeMillis());
+                    note.setLatestEventInfo(CaptureAndUploadActivity.this, noteMessage, noteMessage, contentIntent);
+                    note.flags |= Notification.FLAG_AUTO_CANCEL;
+    
+                    manager.notify(noteID, note);
+                }
+                else {
+                    // アップロードに失敗したらトーストと通知を更新する
+                    Toast.makeText(CaptureAndUploadActivity.this, getString(R.string.error_upload_failed), Toast.LENGTH_SHORT).show();
+    
+                    String noteMessage = getString(R.string.error_upload_failed) + " - " + image.getName();
+                    Notification note = new Notification(android.R.drawable.ic_delete, noteMessage, System.currentTimeMillis());
+                    note.setLatestEventInfo(CaptureAndUploadActivity.this, noteMessage, noteMessage, contentIntent);
+                    note.flags |= Notification.FLAG_AUTO_CANCEL;
+    
+                    manager.notify(noteID, note);
+                }
+            }
+            numOfTasks--;
+            TextView progress = (TextView)findViewById(R.id.progress);
+            if(numOfTasks > 0) {
+                progress.setText(getString(R.string.main_uploading) + "\n" + getString(R.string.main_remain_task) + numOfTasks + getString(R.string.unit));
             }
             else {
-                // アップロードに失敗したらトーストと通知を更新する
-                Toast.makeText(CaptureAndUploadActivity.this, getString(R.string.error_upload_failed), Toast.LENGTH_SHORT).show();
-
-                String noteMessage = getString(R.string.error_upload_failed) + " - " + image.getName();
-                Notification note = new Notification(android.R.drawable.ic_delete, noteMessage, System.currentTimeMillis());
-                note.setLatestEventInfo(CaptureAndUploadActivity.this, noteMessage, noteMessage, contentIntent);
-                note.flags |= Notification.FLAG_AUTO_CANCEL;
-
-                manager.notify(noteID, note);
+                numOfTasks = 0;
+                progress.setText("");
+                progress.setVisibility(View.INVISIBLE);
             }
+            
             uploading = false;
         }
     }

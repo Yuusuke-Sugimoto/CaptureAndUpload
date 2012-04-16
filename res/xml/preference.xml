@@ -1,8 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android" >
     <PreferenceCategory android:title="@string/setting_general_title" >
+        <CheckBoxPreference android:title="@string/setting_show_status_title"
+            android:key="setting_show_status"
+            android:defaultValue="true"
+            android:summaryOn="@string/setting_show_enable"
+            android:summaryOff="@string/setting_show_disable" />
+    </PreferenceCategory>
+    <PreferenceCategory android:title="@string/setting_post_title" >
         <EditTextPreference android:title="@string/setting_contributor_title"
             android:key="setting_contributor"
+            android:defaultValue=""
             android:summary="@string/setting_not_configured"
             android:dialogTitle="@string/setting_contributor_title"
             android:hint="@string/setting_contributor_hint"
@@ -12,10 +20,12 @@
             android:negativeButtonText="@string/cancel" />
         <CheckBoxPreference android:title="@string/setting_use_comment_title"
             android:key="setting_use_comment"
+            android:defaultValue="false"
             android:summaryOn="@string/setting_post_enable"
             android:summaryOff="@string/setting_post_disable" />
         <EditTextPreference android:title="@string/setting_passwd_title"
             android:key="setting_passwd"
+            android:defaultValue=""
             android:summary="@string/setting_not_configured"
             android:dialogTitle="@string/setting_passwd_title"
             android:hint="@string/setting_passwd_hint"

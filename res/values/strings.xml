@@ -7,6 +7,7 @@
     <string name="main_exit_message">アプリを終了してもよろしいですか?</string>
     <string name="main_uploading">アップロード中…</string>
     <string name="main_upload_finish">アップロード完了</string>
+    <string name="main_remain_task">残り</string>
 
     <string name="blank_description">背景</string>
 
@@ -20,6 +21,10 @@
 
     <string name="setting_title">設定メニュー</string>
     <string name="setting_general_title">一般設定</string>
+    <string name="setting_show_status_title">通知を表示する</string>
+    <string name="setting_show_enable">表示する</string>
+    <string name="setting_show_disable">表示しない</string>
+    <string name="setting_post_title">投稿設定</string>
     <string name="setting_contributor_title">投稿者名を設定</string>
     <string name="setting_contributor_hint">投稿者名を設定(20文字まで)</string>
     <string name="setting_use_comment_title">コメントを投稿する</string>
@@ -32,6 +37,7 @@
     <string name="setting_no_name">ななしさん</string>
     <string name="setting_no_passwd">hogehoge</string>
 
+    <string name="unit">件</string>
     <string name="yes">はい</string>
     <string name="no">いいえ</string>
     <string name="ok">OK</string>

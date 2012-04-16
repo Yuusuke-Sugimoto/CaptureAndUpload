@@ -11,6 +11,17 @@ public class PreferenceStore {
     private PreferenceStore() {}
 
     /***
+     * "通知を表示する"が有効かどうかを調べる
+     *
+     * @param context
+     *     SharedPreferences取得用のコンテキスト
+     * @return 有効ならばtrue、無効または未設定ならばfalseを返す
+     */
+    public static boolean isStatusEnable(Context context) {
+        return(PreferenceManager.getDefaultSharedPreferences(context).getBoolean("setting_show_status", false));
+    }
+
+    /***
      * 設定済の投稿者名を取得する
      *
      * @param context
