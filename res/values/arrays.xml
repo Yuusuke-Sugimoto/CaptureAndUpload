@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="setting_rotation_labels">
+        <item>@string/setting_rotation_user</item>
+        <item>@string/setting_rotation_auto</item>
+        <item>@string/setting_rotation_portrait</item>
+        <item>@string/setting_rotation_landscape</item>
+    </string-array>
+    <string-array name="setting_rotation_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+    </string-array>
+</resources>

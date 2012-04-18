@@ -6,6 +6,13 @@
             android:defaultValue="true"
             android:summaryOn="@string/setting_show_enable"
             android:summaryOff="@string/setting_show_disable" />
+        <ListPreference android:title="@string/setting_rotation_title"
+            android:key="setting_rotation"
+            android:defaultValue="0"
+            android:summary="@string/setting_rotation_user"
+            android:dialogTitle="@string/setting_rotation_title"
+            android:entries="@array/setting_rotation_labels"
+            android:entryValues="@array/setting_rotation_values" />
     </PreferenceCategory>
     <PreferenceCategory android:title="@string/setting_post_title" >
         <EditTextPreference android:title="@string/setting_contributor_title"

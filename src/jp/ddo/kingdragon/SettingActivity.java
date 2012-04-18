@@ -1,10 +1,12 @@
 package jp.ddo.kingdragon;
 
 import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.OnSharedPreferenceChangeListener;
 import android.os.Bundle;
 import android.preference.EditTextPreference;
+import android.preference.ListPreference;
 import android.preference.Preference;
 import android.preference.Preference.OnPreferenceChangeListener;
 import android.preference.PreferenceActivity;
@@ -30,13 +32,7 @@ public class SettingActivity extends PreferenceActivity implements OnSharedPrefe
                 }
                 else {
                     // 変更されなかったことをダイアログで通知する
-                    AlertDialog.Builder builder = new AlertDialog.Builder(SettingActivity.this);
-                    builder.setIcon(android.R.drawable.ic_dialog_alert);
-                    builder.setTitle(getString(R.string.error_title));
-                    builder.setMessage(getString(R.string.error_illegal_length_passwd));
-                    builder.setPositiveButton(getString(R.string.ok), null);
-                    builder.setCancelable(true);
-                    builder.create().show();
+                    showDialog(CaptureAndUploadActivity.DIALOG_PASSWD_NOT_CHANGED);
                 }
 
                 return(returnBool);
@@ -58,7 +54,35 @@ public class SettingActivity extends PreferenceActivity implements OnSharedPrefe
         super.onPause();
 
         getPreferenceScreen().getSharedPreferences().unregisterOnSharedPreferenceChangeListener(this);
+    }
 
+    /***
+     * ダイアログを生成する
+     */
+    @Override
+    protected Dialog onCreateDialog(int id) {
+        Dialog retDialog = super.onCreateDialog(id);
+
+        AlertDialog.Builder builder;
+
+        switch(id) {
+        case CaptureAndUploadActivity.DIALOG_PASSWD_NOT_CHANGED:
+            builder = new AlertDialog.Builder(SettingActivity.this);
+            builder.setIcon(android.R.drawable.ic_dialog_alert);
+            builder.setTitle(getString(R.string.error_title));
+            builder.setMessage(getString(R.string.error_illegal_length_passwd));
+            builder.setPositiveButton(getString(R.string.ok), null);
+            builder.setCancelable(true);
+            retDialog = builder.create();
+
+            break;
+        default:
+            retDialog = null;
+
+            break;
+        }
+
+        return(retDialog);
     }
 
     /***
@@ -73,6 +97,9 @@ public class SettingActivity extends PreferenceActivity implements OnSharedPrefe
      * 各項目の表示を更新する
      */
     public void updateUI() {
+        ListPreference mListPref = (ListPreference)findPreference("setting_rotation");
+        mListPref.setSummary(mListPref.getEntry());
+
         EditTextPreference mEditTextPref = (EditTextPreference)findPreference("setting_contributor");
         if(mEditTextPref.getText() != null && mEditTextPref.getText().length() != 0) {
             mEditTextPref.setSummary(mEditTextPref.getText());

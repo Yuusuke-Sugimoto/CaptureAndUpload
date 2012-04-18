@@ -22,6 +22,17 @@ public class PreferenceStore {
     }
 
     /***
+     * "撮影時の向き"の設定値を取得する
+     *
+     * @param context
+     *     SharedPreferences取得用のコンテキスト
+     * @return "撮影時の向き"の設定値 未設定ならば-1を返す
+     */
+    public static int getRotationSetting(Context context) {
+        return(Integer.parseInt(PreferenceManager.getDefaultSharedPreferences(context).getString("setting_rotation", "-1")));
+    }
+
+    /***
      * 設定済の投稿者名を取得する
      *
      * @param context

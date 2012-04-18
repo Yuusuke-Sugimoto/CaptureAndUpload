@@ -24,6 +24,11 @@
     <string name="setting_show_status_title">通知を表示する</string>
     <string name="setting_show_enable">表示する</string>
     <string name="setting_show_disable">表示しない</string>
+    <string name="setting_rotation_title">撮影時の向き</string>
+    <string name="setting_rotation_user">端末の設定に従う</string>
+    <string name="setting_rotation_auto">自動で切り替える</string>
+    <string name="setting_rotation_portrait">ポートレート(縦)</string>
+    <string name="setting_rotation_landscape">ランドスケープ(横)</string>
     <string name="setting_post_title">投稿設定</string>
     <string name="setting_contributor_title">投稿者名を設定</string>
     <string name="setting_contributor_hint">投稿者名を設定(20文字まで)</string>
