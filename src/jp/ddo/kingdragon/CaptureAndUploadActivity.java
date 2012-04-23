@@ -775,7 +775,7 @@ public class CaptureAndUploadActivity extends Activity
                 String noteMessage = getString(R.string.main_uploading) + " - " + image.getName();
                 Notification note = new Notification(android.R.drawable.stat_sys_upload, noteMessage, System.currentTimeMillis());
                 note.setLatestEventInfo(CaptureAndUploadActivity.this, noteMessage, noteMessage, contentIntent);
-                note.flags |= Notification.FLAG_AUTO_CANCEL;
+                note.flags |= Notification.FLAG_ONGOING_EVENT;
 
                 noteID = 0;
                 manager.notify(noteID, note);
