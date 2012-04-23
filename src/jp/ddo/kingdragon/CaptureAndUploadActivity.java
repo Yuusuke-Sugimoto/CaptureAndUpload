@@ -753,7 +753,7 @@ public class CaptureAndUploadActivity extends Activity
 
         @Override
         public String doInBackground(Void... params) {
-            String retString = "";
+            String retString = getString(R.string.error_upload_failed);
 
             while(uploading) {
                 // 他のファイルをアップロード中であれば待機する
