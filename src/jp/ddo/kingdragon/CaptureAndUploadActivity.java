@@ -66,7 +66,7 @@ public class CaptureAndUploadActivity extends Activity
     /***
      * アップロード先
      */
-    public static final String DESTINATION_ADDRESS = "http://kingdragon.ddo.jp/test1234/";
+    public static final String DESTINATION_ADDRESS = "http://kingdragon.ddo.jp/test1234/uploader/";
     // リクエストコード
     public static final int REQUEST_IMAGE_FROM_GALLERY = 0;
     public static final int REQUEST_INPUT_COMMENT = 1;
